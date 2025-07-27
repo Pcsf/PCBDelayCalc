@@ -1,0 +1,20 @@
+{
+    "fr4_standard": {
+        "er": 4.3,
+        "er_tolerance": 0.2,
+        "loss_tangent": 0.02,
+        "thickness_tolerance": 0.1
+    },
+    "fr4_low_loss": {
+        "er": 4.1,
+        "er_tolerance": 0.15,
+        "loss_tangent": 0.01,
+        "thickness_tolerance": 0.08
+    },
+    "rogers_4350b": {
+        "er": 3.48,
+        "er_tolerance": 0.05,
+        "loss_tangent": 0.004,
+        "thickness_tolerance": 0.05
+    }
+}
