@@ -80,6 +80,29 @@ class PCBDelayCalculator:
     ) -> Dict[str, Any]:
         """
         Estimates min/max delay range considering manufacturing tolerances.
+        
+        This method calculates the nominal, minimum, and maximum propagation delays
+        for a PCB trace based on its physical dimensions, the PCB material properties,
+        and manufacturing tolerances. It accounts for variations in dielectric constant
+        (er) and dielectric height due to thickness tolerances.
+        
+        Args:
+            track_length_mm: The length of the trace in millimeters.
+            pcb_type: The type of PCB material (must match a key in materials.json).
+            trace_width: The width of the trace in millimeters.
+            trace_thickness: The thickness of the trace in millimeters.
+            dielectric_height: The height of the dielectric material in millimeters.
+            trace_type: The type of trace ('microstrip' or 'stripline').
+            additional_tolerance: An additional safety margin factor (default 0.05 or 5%).
+            
+        Returns:
+            A dictionary containing:
+                - 'min_delay_ns': Minimum estimated delay in nanoseconds.
+                - 'max_delay_ns': Maximum estimated delay in nanoseconds.
+                - 'nominal_delay_ns': Nominal estimated delay in nanoseconds.
+                - 'er_eff_nominal': Nominal effective dielectric constant.
+                - 'er_eff_range': Tuple of (min, max) effective dielectric constants.
+                - 'velocity_mm_ps': Nominal propagation velocity in millimeters per picosecond.
         """
         if pcb_type not in self.pcb_params:
             raise ValueError(f"PCB type '{pcb_type}' not found in materials file.")
@@ -125,6 +148,13 @@ class PCBDelayCalculator:
 def generate_sdc_constraints(net_delays: Dict[str, Dict[str, Any]], clock_name: str) -> str:
     """
     Generates SDC constraint strings from delay results.
+    
+    Args:
+        net_delays: A dictionary mapping net names to their delay analysis results.
+        clock_name: The name of the reference clock for the SDC constraints.
+        
+    Returns:
+        A string containing the formatted SDC constraints.
     """
     lines = [f"# PCB Track Delay Constraints for clock: {clock_name}"]
     for net_name, delays in net_delays.items():
@@ -141,7 +171,7 @@ def main():
     """Main function to run the CLI."""
     parser = argparse.ArgumentParser(description="PCB Delay Calculator for FPGA Timing Analysis")
     
-    parser.add_argument("--nets", type=str, required=True, help='JSON string or file path for nets. Ex: \'{"net1": 25.4, "net2": 50.8}\' or nets.json')
+    parser.add_argument("--nets", type=str, required=True, help='JSON string, CSV file path, or JSON file path for nets. Ex: \'{"net1": 25.4, "net2": 50.8}\' or nets.json or nets.csv')
     parser.add_argument("--pcb-type", type=str, default='fr4_standard', help="PCB material type (e.g., 'fr4_standard')")
     parser.add_argument("--trace-width", type=float, default=0.1, help="Trace width in mm")
     parser.add_argument("--trace-thickness", type=float, default=0.035, help="Trace thickness in mm (1oz copper)")
@@ -149,18 +179,39 @@ def main():
     parser.add_argument("--trace-type", type=str, default='microstrip', choices=['microstrip', 'stripline'], help="Trace type")
     parser.add_argument("--clock-name", type=str, default='sys_clk', help="Reference clock name for SDC constraints")
     parser.add_argument("--output-format", type=str, default='human', choices=['human', 'json', 'sdc'], help="Output format")
+    parser.add_argument("--list-materials", action='store_true', help="List all available materials from materials.json")
     
     args = parser.parse_args()
     
+    calc = PCBDelayCalculator()
+    
+    if args.list_materials:
+        print("Available PCB Materials:")
+        for material in calc.pcb_params.keys():
+            print(f"  - {material}")
+        return
+    
     try:
-        # Load nets from JSON string or file
+        # Load nets from JSON string, JSON file, or CSV file
         if os.path.exists(args.nets):
-            with open(args.nets, 'r') as f:
-                track_lengths = json.load(f)
+            if args.nets.endswith('.csv'):
+                import csv
+                track_lengths = {}
+                with open(args.nets, 'r') as csvfile:
+                    reader = csv.reader(csvfile)
+                    for row in reader:
+                        if len(row) == 2:
+                            try:
+                                track_lengths[row[0]] = float(row[1])
+                            except ValueError:
+                                logging.warning(f"Skipping invalid CSV row: {row}")
+            else:
+                with open(args.nets, 'r') as f:
+                    track_lengths = json.load(f)
         else:
             track_lengths = json.loads(args.nets)
-    except (json.JSONDecodeError, FileNotFoundError) as e:
-        logging.error(f"Invalid nets format. Must be a valid JSON string or file path. Error: {e}")
+    except (json.JSONDecodeError, FileNotFoundError, csv.Error) as e:
+        logging.error(f"Invalid nets format. Must be a valid JSON string, JSON file, or CSV file. Error: {e}")
         return
 
     calc = PCBDelayCalculator()
